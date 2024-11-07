@@ -1,0 +1,175 @@
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.util.ArrayList;
+
+class TableRow {
+    String symbol;
+    int address;
+    int index;
+
+    public TableRow(String symbol, int address) {
+        this.symbol = symbol;
+        this.address = address;
+    }
+
+    public TableRow(String symbol, int address, int index) {
+        this.symbol = symbol;
+        this.address = address;
+        this.index = index;
+    }
+
+    public int getIndex() {
+        return index;
+    }
+
+    public void setIndex(int index) {
+        this.index = index;
+    }
+
+    public String getSymbol() {
+        return symbol;
+    }
+
+    public void setSymbol(String symbol) {
+        this.symbol = symbol;
+    }
+
+    public int getAddress() {
+        return address;
+    }
+
+    public void setAddress(int address) {
+        this.address = address;
+    }
+}
+
+public class Pass_2 {
+    ArrayList<TableRow> SYMTAB, LITTAB;
+
+    public Pass_2() {
+        SYMTAB = new ArrayList<>();
+        LITTAB = new ArrayList<>();
+    }
+
+    public static void main(String[] args) {
+        Pass_2 pass2 = new Pass_2();
+
+        try {
+            pass2.generateCode("IC.txt");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void readtables() {
+        BufferedReader br;
+        String line;
+        try {
+            // Read SYMTAB
+            br = new BufferedReader(new FileReader("SYMTAB.txt"));
+            while ((line = br.readLine()) != null) {
+                String parts[] = line.split("\\s+");
+                SYMTAB.add(new TableRow(parts[1], Integer.parseInt(parts[2]), Integer.parseInt(parts[0])));
+            }
+            br.close();
+
+            // Read LITTAB
+            br = new BufferedReader(new FileReader("LITTAB.txt"));
+            while ((line = br.readLine()) != null) {
+                String parts[] = line.split("\\s+");
+                LITTAB.add(new TableRow(parts[1], Integer.parseInt(parts[2]), Integer.parseInt(parts[0])));
+            }
+            br.close();
+            System.out.println("File processed Successfully, Output added to PASS2.txt\n");
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    public void generateCode(String filename) throws Exception {
+        readtables();
+        BufferedReader br = new BufferedReader(new FileReader(filename));
+        BufferedWriter bw = new BufferedWriter(new FileWriter("PASS2.txt"));
+        String line, code;
+
+        while ((line = br.readLine()) != null) {
+            String parts[] = line.split("\\s+");
+
+            // Skip AD and DL,02 lines (Assembler Directives or LTORG)
+            if (parts[0].contains("AD") || parts[0].contains("DL,02")) {
+                bw.write("\n");
+                continue;
+            }
+
+            // Handle (DL,01) (C,x) - DC (Define Constant)
+            else if (parts.length == 2) {
+                if (parts[0].contains("DL")) {
+                    parts[0] = parts[0].replaceAll("[^0-9]", ""); // Extract the DL code
+                    if (Integer.parseInt(parts[0]) == 1) { // DC statement
+                        int constant = Integer.parseInt(parts[1].replaceAll("[^0-9]", ""));
+						//format string contains address of constant as three digit number
+                        code = "00\t0\t" + String.format("%03d", constant) + "\n"; // Generate machine code
+                        bw.write(code);
+                    }
+                }
+
+                // Handle IS, e.g. (IS,10) (S,4)
+                else if (parts[0].contains("IS")) {
+                    int opcode = Integer.parseInt(parts[0].replaceAll("[^0-9]", ""));
+                    if (opcode == 10) { // STOP or similar instructions
+                        if (parts[1].contains("S")) {
+                            int symIndex = Integer.parseInt(parts[1].replaceAll("[^0-9]", "")); 
+                            if (symIndex - 1 >= 0 && symIndex - 1 < SYMTAB.size()) {
+								//code contains 3 digit opcode and 3-digit address
+                                code = String.format("%02d", opcode) + "\t0\t" + String.format("%03d", SYMTAB.get(symIndex - 1).getAddress()) + "\n";
+                                bw.write(code);
+                            }
+                        }
+						else if (parts[1].contains("L")) {
+                            int symIndex = Integer.parseInt(parts[1].replaceAll("[^0-9]", "")); // Extract index from (L,n)
+                            if (symIndex - 1 >= 0 && symIndex - 1 < LITTAB.size()) {
+                                code = String.format("%02d", opcode) + "\t0\t" + String.format("%03d", LITTAB.get(symIndex - 1).getAddress()) + "\n";
+                                bw.write(code);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Handle IS with no operands (e.g., (IS,00) )
+            else if (parts.length == 1 && parts[0].contains("IS")) {
+                int opcode = Integer.parseInt(parts[0].replaceAll("[^0-9]", "")); // Extract opcode
+                code = String.format("%02d", opcode) + "\t0\t" + String.format("%03d", 0) + "\n"; // Generate machine code
+                bw.write(code);
+            }
+
+            // Handle IS with 2 operands (e.g., (IS,05) (1) (S,2) or (IS,04) (1) (L,0))
+            else if (parts[0].contains("IS") && parts.length == 3) {
+                int opcode = Integer.parseInt(parts[0].replaceAll("[^0-9]", "")); // Extract opcode
+                int regcode = Integer.parseInt(parts[1].replaceAll("[^0-9]", "")); // Extract register code
+
+                if (parts[2].contains("S")) { // Symbolic address
+                    int symIndex = Integer.parseInt(parts[2].replaceAll("[^0-9]", "")); // Extract index from (S,n)
+                    if (symIndex - 1 >= 0 && symIndex - 1 < SYMTAB.size()) {
+                        code = String.format("%02d", opcode) + "\t" + regcode + "\t" + String.format("%03d", SYMTAB.get(symIndex - 1).getAddress()) + "\n";
+                        bw.write(code);
+                    }
+                } else if (parts[2].contains("L")) { // Literal address
+                    int symIndex = Integer.parseInt(parts[2].replaceAll("[^0-9]", "")); // Extract index from (L,n)
+                    if (symIndex - 1 >= 0 && symIndex - 1 < LITTAB.size()) {
+                        code = String.format("%02d", opcode) + "\t" + regcode + "\t" + String.format("%03d", LITTAB.get(symIndex - 1).getAddress()) + "\n";
+                        bw.write(code);
+                    }
+                }
+            }
+        }
+
+        // Close the resources
+        bw.close();
+        br.close();
+    }
+}
+
