@@ -1,0 +1,12 @@
+APTAB Contents:
+P1 = 10
+P2 = 20
+P3 = AREG
+P4 = CREG
+
+APTAB Contents:
+P1 = 100
+P2 = 200
+P3 = BREG
+P4 = AREG
+
